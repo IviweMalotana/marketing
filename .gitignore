@@ -1,0 +1,28 @@
+# .NET build output
+bin/
+obj/
+out/
+publish/
+
+# User-specific / IDE
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+*.swp
+
+# Local secrets & env
+appsettings.Development.json
+appsettings.Local.json
+*.env
+.env*
+!.env.example
+
+# Test results
+TestResults/
+*.trx
+
+# OS cruft
+.DS_Store
+Thumbs.db
