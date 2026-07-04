@@ -73,7 +73,7 @@ public class EmailSender
     /// provider rejects the send — callers translate that into a 502.
     /// </summary>
     public async Task<string?> SendAsync(string toEmail, string toName, string subject, string htmlBody,
-        (byte[] data, string fileName, string contentType)? attachment = null,
+        IReadOnlyList<(byte[] data, string fileName, string contentType)>? attachments = null,
         string? category = null)
     {
         var resendKey = ResendApiKey;
@@ -90,10 +90,10 @@ public class EmailSender
         {
             string? id;
             if (!string.IsNullOrEmpty(resendKey))
-                id = await SendViaResendAsync(resendKey, toEmail, subject, htmlBody, attachment);
+                id = await SendViaResendAsync(resendKey, toEmail, subject, htmlBody, attachments);
             else
             {
-                await SendViaSmtpAsync(host!, toEmail, toName, subject, htmlBody, attachment);
+                await SendViaSmtpAsync(host!, toEmail, toName, subject, htmlBody, attachments);
                 id = null;
             }
 
@@ -110,7 +110,7 @@ public class EmailSender
 
     /// <summary>Sends via the Resend REST API over HTTPS (not blocked by cloud SMTP firewalls).</summary>
     private async Task<string?> SendViaResendAsync(string apiKey, string toEmail, string subject,
-        string htmlBody, (byte[] data, string fileName, string contentType)? attachment)
+        string htmlBody, IReadOnlyList<(byte[] data, string fileName, string contentType)>? attachments)
     {
         var payload = new Dictionary<string, object?>
         {
@@ -120,16 +120,13 @@ public class EmailSender
             ["html"] = htmlBody,
         };
 
-        if (attachment.HasValue)
+        if (attachments is { Count: > 0 })
         {
-            payload["attachments"] = new[]
+            payload["attachments"] = attachments.Select(a => new Dictionary<string, object?>
             {
-                new Dictionary<string, object?>
-                {
-                    ["filename"] = attachment.Value.fileName,
-                    ["content"] = Convert.ToBase64String(attachment.Value.data),
-                }
-            };
+                ["filename"] = a.fileName,
+                ["content"] = Convert.ToBase64String(a.data),
+            }).ToArray();
         }
 
         using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails");
@@ -155,7 +152,7 @@ public class EmailSender
 
     /// <summary>Sends via SMTP/STARTTLS (MailKit). Used for local dev or any non-Resend host.</summary>
     private async Task SendViaSmtpAsync(string host, string toEmail, string toName, string subject,
-        string htmlBody, (byte[] data, string fileName, string contentType)? attachment)
+        string htmlBody, IReadOnlyList<(byte[] data, string fileName, string contentType)>? attachments)
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(FromName, FromAddress));
@@ -163,11 +160,9 @@ public class EmailSender
         message.Subject = subject;
 
         var builder = new BodyBuilder { HtmlBody = htmlBody };
-        if (attachment.HasValue)
+        foreach (var a in attachments ?? Array.Empty<(byte[], string, string)>())
         {
-            builder.Attachments.Add(attachment.Value.fileName,
-                attachment.Value.data,
-                ContentType.Parse(attachment.Value.contentType));
+            builder.Attachments.Add(a.fileName, a.data, ContentType.Parse(a.contentType));
         }
         message.Body = builder.ToMessageBody();
 

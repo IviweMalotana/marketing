@@ -57,6 +57,10 @@ curl https://<service-url>/health
 
 ### `POST /api/email/send` — raw HTML
 
+Optional `attachments` (both send endpoints accept them — e.g. invoice PDFs):
+`[{ "filename": "invoice.pdf", "contentBase64": "<base64>", "contentType": "application/pdf" }]`.
+`contentType` defaults to `application/octet-stream`.
+
 ```bash
 curl -X POST https://<service-url>/api/email/send \
   -H "X-Api-Key: $MARKETING_API_KEY" \
@@ -66,7 +70,10 @@ curl -X POST https://<service-url>/api/email/send \
     "toName": "Ivi",
     "subject": "Hello from BDP",
     "html": "<h1>Hi!</h1><p>Raw HTML body.</p>",
-    "category": "adhoc"
+    "category": "adhoc",
+    "attachments": [
+      { "filename": "invoice.pdf", "contentBase64": "JVBERi0xLjQK...", "contentType": "application/pdf" }
+    ]
   }'
 # → { "id": "<resend-message-id>", "transport": "resend", "status": "sent" }
 ```
@@ -86,6 +93,8 @@ Notes:
   (`12797.5` → `12,797.50`); templates prefix the `R` themselves.
 - Instead of `recommendations` cards you may pass a pre-rendered
   `recommendationsHtml` string.
+- `attachments` work here too — the `invoice_sent` template is designed to be sent
+  with the invoice PDF attached.
 
 ```bash
 curl -X POST https://<service-url>/api/email/send-template \
@@ -178,8 +187,8 @@ recurring orders, B2B approvals) with an HTTP call to this service:
    `/api/email/send-template` with the template key, the placeholder `data`, its
    order `lineItems`, and product `recommendations` (BDP.API still owns the product
    DB, so it picks the recommended products and passes them as cards).
-3. Attachment flows (invoice PDFs) keep using `/api/email/send` semantics — raw
-   HTML plus attachment support in the transport (exposed via the API later if needed).
+3. Attachment flows (invoice PDFs) pass the PDF as a base64 `attachments` entry on
+   `/api/email/send-template` (template `invoice_sent`) or `/api/email/send`.
 4. Once all call sites are migrated, the `EmailTemplates`/`EmailLogs` tables and
    SMTP/Resend env vars can be retired from BDP.API.
 

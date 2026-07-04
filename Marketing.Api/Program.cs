@@ -52,6 +52,18 @@ app.Use(async (ctx, next) =>
 static bool FixedTimeEquals(string a, string b) =>
     CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
 
+// Decodes caller-supplied base64 attachments into the transport's shape.
+// Throws FormatException on invalid base64 — endpoints turn that into a 400.
+static List<(byte[] data, string fileName, string contentType)>? DecodeAttachments(List<EmailAttachment>? attachments)
+{
+    if (attachments is not { Count: > 0 }) return null;
+    return attachments
+        .Select(a => (Convert.FromBase64String(a.ContentBase64),
+                      a.Filename,
+                      a.ContentType ?? "application/octet-stream"))
+        .ToList();
+}
+
 // ── GET /health ───────────────────────────────────────────────────────────────
 
 app.MapGet("/health", (EmailSender email) =>
@@ -68,10 +80,14 @@ app.MapPost("/api/email/send", async (SendEmailRequest req, EmailSender email, I
     if (string.IsNullOrWhiteSpace(req.Html))
         return Results.BadRequest(new { message = "'html' is required." });
 
+    List<(byte[], string, string)>? attachments;
+    try { attachments = DecodeAttachments(req.Attachments); }
+    catch (FormatException) { return Results.BadRequest(new { message = "An attachment's 'contentBase64' is not valid base64." }); }
+
     try
     {
         var id = await email.SendAsync(req.To, req.ToName ?? req.To, req.Subject, req.Html,
-            category: req.Category);
+            attachments, category: req.Category);
         return Results.Ok(new { id, transport = email.Transport, status = "sent" });
     }
     catch (Exception ex)
@@ -113,10 +129,14 @@ app.MapPost("/api/email/send-template", async (SendTemplateRequest req, EmailSen
     var subject = TemplateRenderer.Render(tmpl.Subject, values);
     var html = TemplateRenderer.Render(tmpl.HtmlBody, values);
 
+    List<(byte[], string, string)>? attachments;
+    try { attachments = DecodeAttachments(req.Attachments); }
+    catch (FormatException) { return Results.BadRequest(new { message = "An attachment's 'contentBase64' is not valid base64." }); }
+
     try
     {
         var id = await email.SendAsync(req.To, req.ToName ?? req.To, subject, html,
-            category: tmpl.Key);
+            attachments, category: tmpl.Key);
         return Results.Ok(new { id, transport = email.Transport, status = "sent", template = tmpl.Key });
     }
     catch (Exception ex)
